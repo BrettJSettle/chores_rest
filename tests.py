@@ -25,6 +25,18 @@ class TestWebApp(unittest.TestCase):
         response = self.client.get("/api/users")
         assert response.status_code == 200
 
+    def test_repeat_user(self):
+        response1 = self.client.post(
+            "/api/users/add",
+            content_type='application/json',
+            data=json.dumps({"name": "Brett"}))
+        assert response1.status_code == 200
+        response2 = self.client.post(
+            "/api/users/add",
+            content_type='application/json',
+            data=json.dumps({'name': 'Brett'}))
+        assert response2.json['user_id'] == response1.json['user_id']
+
     def test_example(self):
         # Insert user
         response = self.client.post(
@@ -39,5 +51,5 @@ class TestWebApp(unittest.TestCase):
             data=json.dumps({
                 "name": "Fill Water",
                 "description": "Fill water container in the fridge"}))
-        
+
         assert response.status_code == 200

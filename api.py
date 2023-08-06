@@ -6,7 +6,6 @@ app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
 def flaskify(data):
-    print(data)
     if 'error' in data:
         return Response(data['error'], data.get('code', 500))
     return jsonify(data)
@@ -27,7 +26,7 @@ def api_add_user():
 
 @app.route('/api/users/update',  methods = ['PUT'])
 def api_update_user():
-    user = request.get_json()
+    user = request.get_json(force=True)
     return flaskify(db.update_user(user))
 
 @app.route('/api/users/delete/<user_id>',  methods = ['DELETE'])
@@ -58,9 +57,14 @@ def api_delete_chore(chore_id):
     return flaskify(db.delete_chore(chore_id))
 
 # Chore Logs
+@app.route('/api/chore_logs', methods = ['GET'])
+def api_get_logs():
+    return flaskify(db.get_chore_logs())
+
 @app.route('/api/chores/<chore_id>/log', methods = ['POST'])
 def api_log_chore(chore_id):
     info = request.get_json()
+    print(chore_id, info)
     return flaskify(db.log_chore(chore_id, info['user_id']))
 
 @app.route('/api/chores/<chore_id>/logs', methods = ['GET'])
