@@ -2,23 +2,32 @@
 import sqlite3
 import datetime
 import json
+import random
 
 USER_COLS = ['id', 'name']
-CHORE_COLS = ['id', 'name', 'description', ('config', 'json')]
-CHORE_LOG_COLS = ['id', 'user_id', 'completion_date']
+CHORE_COLS = ['id', 'name', 'description', 'assignee', ('config', 'json')]
+CHORE_LOG_COLS = ['id', 'user_id', ('completion_date', 'date')]
+
+
+def formatDate(s):
+    return s.strftime('%m/%d/%Y %H:%M:%S')
+
+
+def parseDate(s):
+    return datetime.datetime.strptime(s, '%m/%d/%Y %H:%M:%S')
 
 
 def row_to_dict(row, keys):
     result = {}
     for key in keys:
-        val = None
-        vtype = str
         if isinstance(key, tuple):
             key, vtype = key
-        if vtype == 'json':
-            val = json.loads(row[key])
+            if vtype == 'json':
+                val = json.loads(row[key])
+            elif vtype == 'date':
+                val = parseDate(row[key])
         else:
-            val = vtype(row[key])
+            val = row[key]
         result[key] = val
     return result
 
@@ -41,6 +50,7 @@ def create_tables():
                 id INTEGER PRIMARY KEY NOT NULL,
                 name TEXT NOT NULL,
                 description TEXT NOT NULL,
+                assignee INTEGER NOT NULL,
                 config TEXT NOT NULL
             );''')
         conn.execute('''
@@ -67,6 +77,18 @@ def drop_tables():
         print("Tables dropped successfully")
     except Exception as e:
         print("Tables drop failed - %s" % e)
+    finally:
+        conn.close()
+
+
+def execute(command, *args):
+    try:
+        conn = connect_to_db()
+        conn.execute(command, *args)
+        conn.commit()
+    except Exception as e:
+        conn.rollback()
+        raise
     finally:
         conn.close()
 
@@ -157,18 +179,26 @@ def delete_user(user_id):
 
 def insert_chore(chore):
     chores = get_chores()
-
-    for existing_chore in chores['chores']:
+    for existing_chore in chores:
         if existing_chore['name'] == chore['name']:
             return existing_chore
 
+    if 'config' not in chore:
+        chore['config'] = {}
+
+    if 'users' not in chore['config']:
+        chore['config']['users'] = [user['id'] for user in get_users()]
+
+    if 'assignee' not in chore:
+        chore['assignee'] = random.choice(chore['config']['users'])
     try:
         conn = connect_to_db()
         cur = conn.cursor()
         config = chore.get('config', {})
-        cur.execute("INSERT INTO Chores (name, description, config) VALUES (?, ?, ?)",
+        cur.execute("INSERT INTO Chores (name, description, assignee, config) VALUES (?, ?, ?, ?)",
                     (chore['name'],
                      chore['description'],
+                     chore['assignee'],
                      json.dumps(config)))
         conn.commit()
         return get_chore_by_id(cur.lastrowid)
@@ -205,18 +235,31 @@ def get_chore_by_id(chore_id):
         row = cur.fetchone()
         if not row:
             raise Exception("No chore found with id '%s'" % chore_id)
-        return row_to_dict(row, CHORE_COLS)
+        result = row_to_dict(row, CHORE_COLS)
+
+        latest = get_chore_logs(chore_id=chore_id)
+        if latest:
+            result['latest'] = latest[0]
+
+        return result
     except Exception as e:
         raise
 
 
 def update_chore(chore):
+    existing_chore = get_chore_by_id(chore['id'])
+    if 'config' in chore:
+        existing_chore['config'].update(chore['config'])
+    else:
+        chore['config'] = existing_chore['config']
+
+    if 'assignee' in chore:
+        existing_chore['assignee'] = chore['assignee']
     try:
         conn = connect_to_db()
         cur = conn.cursor()
-        config = json.dumps(chore.get('config', {}))
-        cur.execute("UPDATE Chores SET name = ?, description = ?, config = ? WHERE id = ?",
-                    (chore["name"], chore["description"], config, chore["id"],))
+        cur.execute("UPDATE Chores SET assignee = ?, config = ? WHERE id = ?",
+                    (chore['assignee'], json.dumps(chore['config']), chore["id"]))
         conn.commit()
         # return the chore
         return get_chore_by_id(chore["id"])
@@ -241,12 +284,12 @@ def delete_chore(chore_id):
 
 # Chore Logs
 def log_chore(chore_id, user_id):
-    completion_date = datetime.datetime.now().strftime('%m/%d/%Y, %H:%M:%S')
+    completion_date = formatDate(datetime.datetime.now())
     try:
         conn = connect_to_db()
         cur = conn.cursor()
         # Log chore completion.
-        cur.execute("INSERT INTO ChoreLogs (chore_id, user_id, completion_date) VALUES (?, ?)",
+        cur.execute("INSERT INTO ChoreLogs (id, user_id, completion_date) VALUES (?, ?, ?)",
                     (chore_id, user_id, completion_date))
         conn.commit()
 
@@ -254,7 +297,6 @@ def log_chore(chore_id, user_id):
         chore = get_chore_by_id(chore_id)
         message = '%s completed %s at %s' % (
             user['name'], chore['name'], completion_date)
-        print(message)
         return {'status': message}
     except Exception as e:
         conn.rollback()
@@ -264,6 +306,8 @@ def log_chore(chore_id, user_id):
 
 
 def get_chore_logs(chore_id=None, user_id=None):
+    users = {user['id']: user for user in get_users()}
+    chores = {chore['id']: chore for chore in get_chores()}
     try:
         conn = connect_to_db()
         conn.row_factory = sqlite3.Row
@@ -271,7 +315,7 @@ def get_chore_logs(chore_id=None, user_id=None):
         filters = []
         values = []
         if chore_id is not None:
-            filters.append('chore_id = ?')
+            filters.append('id = ?')
             values.append(chore_id)
         if user_id is not None:
             filters.append('user_id = ?')
@@ -279,11 +323,17 @@ def get_chore_logs(chore_id=None, user_id=None):
         query = "SELECT * FROM ChoreLogs"
         if filters:
             query += ' WHERE ' + ' AND '.join(filters)
+        query += ' ORDER BY completion_date DESC'
         cur.execute(query, values)
         rows = cur.fetchall()
         logs = []
         for row in rows:
-            logs.append(row_to_dict(row, CHORE_LOG_COLS))
+            log_row = row_to_dict(row, CHORE_LOG_COLS)
+            log_row['chore'] = chores[log_row['id']]
+            log_row['user'] = users[log_row['user_id']]
+            del log_row['user_id']
+            del log_row['id']
+            logs.append(log_row)
         return logs
     except Exception as e:
         raise

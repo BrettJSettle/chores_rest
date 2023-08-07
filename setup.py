@@ -3,13 +3,15 @@ import db
 
 
 def add_housemates():
-    resp = db.insert_user({'name': 'Brett'})
-    resp = db.insert_user({'name': 'Cassidy'})
-    resp = db.insert_user({'name': 'Tuesday'})
-    resp = db.insert_user({'name': 'Calvin'})
+    users = []
+    users.append(db.insert_user({'name': 'Brett'}))
+    users.append(db.insert_user({'name': 'Cassidy'}))
+    users.append(db.insert_user({'name': 'Tuesday'}))
+    users.append(db.insert_user({'name': 'Calvin'}))
+    return users
 
 
-def add_chores():
+def add_chores(users):
     db.insert_chore({
         'name': 'Clean Kitchen',
         'description': 'Wipe down counters and sweep/mop floors',
@@ -19,10 +21,6 @@ def add_chores():
         'name': 'Vacuum Living Room',
         'description': 'Vacuum living room carpet',
         'config': {'interval': 14}
-    })
-    db.insert_chore({
-        'name': 'Unload Dishwasher',
-        'description': 'Unload dishes from dishwasher'
     })
     db.insert_chore({
         'name': 'Clean Downstairs Bathroom',
@@ -36,34 +34,35 @@ def add_chores():
     })
     db.insert_chore({
         'name': 'Take Out Trash',
-        'description': 'Take out kitchen trash and recycle'
+        'description': 'Take out kitchen trash and recycle',
     })
-
-
-def add_special_chores():
-    users = db.get_users()['users']
-    brett_id = [user['id']
-                for user in users if user['name'] == 'Brett'][0]
-    cass_id = [user['id']
-               for user in users if user['name'] == 'Cassidy'][0]
+    db.insert_chore({
+        'name': 'Unload Dishwasher',
+        'description': 'Unload dishes from dishwasher',
+    })
+    cass_brett = [user['id']
+                  for user in users if user['name'] in ('Brett', 'Cassidy')]
     # Cass and Brett only
     db.insert_chore({
         'name': 'Refill Water',
         'description': 'Refill container in fridge',
-        'config': {'users': [cass_id, brett_id]}
+        'config': {'users': cass_brett}
     })
     db.insert_chore({
         'name': 'Water Plants',
         'description': 'Water indoor and outdoor plants',
-        'config': {'users': [cass_id, brett_id], 'interval': 2},
-        
+        'config': {'users': cass_brett, 'interval': 2},
+
     })
 
 
 if __name__ == '__main__':
-    db.create_tables()
-    add_housemates()
-    print(db.get_users())
-    add_chores()
-    add_special_chores()
+    # Delete history
+    db.execute('DELETE FROM ChoreLogs WHERE 1;')
+
+    # db.create_tables()
+    # users = add_housemates()
+    # print(db.get_users())
+    # add_chores(users)
     print(db.get_chores())
+    # print(db.get_chore_logs())
