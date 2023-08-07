@@ -1,8 +1,13 @@
 from flask import Flask, request, jsonify #added to top of file
 from flask_cors import CORS #added to top of file
-import db
 import datetime
 import random
+
+import db
+import setup
+
+# Create tables and populate defaults
+setup.setup()
 
 app = Flask(__name__)
 # CORS(app, resources={r"/*": {"origins": "*"}})
@@ -109,6 +114,5 @@ def api_get_user_chore_logs(chore_id, user_id):
 
 
 if __name__ == "__main__":
-    db.create_tables()
     # app.debug = True
-    app.run(host="192.168.1.167", port=5000)
+    app.run(host="192.168.1.165", port=5000)

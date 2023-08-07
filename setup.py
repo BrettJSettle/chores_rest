@@ -56,13 +56,17 @@ def add_chores(users):
     })
 
 
+def setup():
+    db.create_tables()
+    users = db.get_users()
+    if not users:
+        users = add_housemates()
+    if not db.get_chores():
+        add_chores(users)
+
+
 if __name__ == '__main__':
     # Delete history
-    db.execute('DELETE FROM ChoreLogs WHERE 1;')
+    # db.execute('DELETE FROM ChoreLogs WHERE 1;')
+    setup()
 
-    # db.create_tables()
-    # users = add_housemates()
-    # print(db.get_users())
-    # add_chores(users)
-    print(db.get_chores())
-    # print(db.get_chore_logs())
